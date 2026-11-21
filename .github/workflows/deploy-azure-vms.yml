@@ -40,9 +40,7 @@ jobs:
 
         vm:
 
-          - vm-web-01
-
-          - vm-web-02
+          - azurevm2
  
     steps:
 
