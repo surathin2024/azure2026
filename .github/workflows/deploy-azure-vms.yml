@@ -70,9 +70,7 @@ jobs:
  
           python3 -m py_compile app.py
  
-          tar -czf /tmp/studentapp.tar.gz \
-
-            app.py requirements.txt scripts/deploy-vm.sh
+          tar -czf /tmp/studentapp.tar.gz app.py requirements.txt scripts/deploy-vm.sh
  
           python3 - <<'PY'
 
