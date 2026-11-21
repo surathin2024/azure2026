@@ -1,0 +1,168 @@
+name: Deploy Student App to Azure VMs
+ 
+on:
+
+  push:
+
+    branches: [main]
+
+  workflow_dispatch:
+ 
+permissions:
+
+  contents: read
+
+  id-token: write
+ 
+concurrency:
+
+  group: studentapp-vm-deployment
+
+  cancel-in-progress: false
+ 
+jobs:
+
+  deploy:
+
+    name: Deploy to ${{ matrix.vm }}
+
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 40
+ 
+    strategy:
+
+      max-parallel: 1
+
+      fail-fast: true
+
+      matrix:
+
+        vm:
+
+          - vm-web-01
+
+          - vm-web-02
+ 
+    steps:
+
+      - name: Checkout code
+
+        uses: actions/checkout@v4
+ 
+      - name: Sign in to Azure
+
+        uses: azure/login@v2
+
+        with:
+
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+ 
+      - name: Prepare deployment package
+
+        shell: bash
+
+        run: |
+
+          set -euo pipefail
+ 
+          python3 -m py_compile app.py
+ 
+          tar -czf /tmp/studentapp.tar.gz \
+
+            app.py requirements.txt scripts/deploy-vm.sh
+ 
+          python3 - <<'PY'
+
+          import base64
+
+          from pathlib import Path
+ 
+          encoded = base64.b64encode(
+
+              Path("/tmp/studentapp.tar.gz").read_bytes()
+
+          ).decode()
+ 
+          script = (
+
+              "set -eu\n"
+
+              "mkdir -p /opt/studentapp\n"
+
+              f"printf '%s' '{encoded}' | base64 -d "
+
+              "> /tmp/studentapp.tar.gz\n"
+
+              "tar -xzf /tmp/studentapp.tar.gz -C /opt/studentapp\n"
+
+              "bash /opt/studentapp/scripts/deploy-vm.sh\n"
+
+          )
+ 
+          Path("/tmp/run-deployment.sh").write_text(script)
+
+          PY
+ 
+      - name: Deploy and check application
+
+        shell: bash
+
+        env:
+
+          RESOURCE_GROUP: ${{ vars.VM_RESOURCE_GROUP }}
+
+          VM_NAME: ${{ matrix.vm }}
+
+        run: |
+
+          set -euo pipefail
+ 
+          az vm run-command invoke \
+
+            --resource-group "$RESOURCE_GROUP" \
+
+            --name "$VM_NAME" \
+
+            --command-id RunShellScript \
+
+            --scripts @/tmp/run-deployment.sh \
+
+            --output json > /tmp/deployment-result.json
+ 
+          python3 - <<'PY'
+
+          import json
+
+          from pathlib import Path
+ 
+          result = json.loads(
+
+              Path("/tmp/deployment-result.json").read_text()
+
+          )
+ 
+          messages = "\n".join(
+
+              item.get("message", "")
+
+              for item in result.get("value", [])
+
+          )
+ 
+          print(messages)
+ 
+          if "STUDENTAPP_DEPLOY_OK" not in messages:
+
+              raise SystemExit(
+
+                  "VM deployment or health check failed"
+
+              )
+
+          PY
+ 
