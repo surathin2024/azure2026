@@ -118,17 +118,7 @@ jobs:
 
           set -euo pipefail
  
-          az vm run-command invoke \
-
-            --resource-group "$RESOURCE_GROUP" \
-
-            --name "$VM_NAME" \
-
-            --command-id RunShellScript \
-
-            --scripts @/tmp/run-deployment.sh \
-
-            --output json > /tmp/deployment-result.json
+          az vm run-command invoke --resource-group "$RESOURCE_GROUP" --name "$VM_NAME" --command-id RunShellScript --scripts @/tmp/run-deployment.sh --output json > /tmp/deployment-result.json
  
           python3 - <<'PY'
 
